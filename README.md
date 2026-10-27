@@ -10,6 +10,8 @@ A production-style, approval-gated agent runtime for authorized risky actions.
 - executes risky actions in a sandbox
 - requires rollback planning for destructive operations
 - records all actions for auditability
+- integrates with OpenAI for task planning and policy-aware action selection
+- includes a lightweight FastAPI approval dashboard
 
 ## Core components
 
@@ -18,6 +20,8 @@ A production-style, approval-gated agent runtime for authorized risky actions.
 - AgentOps-Control-Center: observability and audit logs
 - personal-ai-assistant: user approval UI
 - skills/plugins: reusable capabilities
+- OpenAI runtime: policy-aware planning and action generation
+- FastAPI approval UI: interactive task approval flow
 
 ## Safety model
 
@@ -41,8 +45,11 @@ Blocked:
 1. Create a virtual environment
 2. Install dependencies:
    pip install -r requirements.txt
-3. Run:
-   python main.py
+3. Set your OpenAI key if you want runtime planning:
+   export OPENAI_API_KEY="your_key_here"
+4. Run the app:
+   python app.py
+5. Open the browser at http://localhost:8000
 
 ## Example flow
 
@@ -53,6 +60,15 @@ Blocked:
 5. A sandbox is created for risky execution
 6. Rollback plan is enforced if required
 7. Logs are stored for audit
+8. Approval UI surfaces actions and allows human confirmation
+
+## New features in this release
+
+- real OpenAI planning support via `openai` SDK
+- built-in FastAPI approval dashboard
+- structured task approval flow
+- environment-based configuration
+- sandbox-aware execution pipeline
 
 ## Notes
 

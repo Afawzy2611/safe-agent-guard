@@ -1,75 +1,105 @@
-# Safe Agent Guard
+import os
+from typing import Optional
 
-A production-style, approval-gated agent runtime for authorized risky actions.
+from openai import OpenAI
 
-## What it does
+from src.safe_agent_guard.models import Action
 
-- runs low-risk tasks automatically
-- blocks unauthorized or harmful actions with policy checks
-- requires explicit approval for high-risk actions
-- executes risky actions in a sandbox
-- requires rollback planning for destructive operations
-- records all actions for auditability
-- integrates with OpenAI for task planning and policy-aware action selection
-- includes a lightweight FastAPI approval dashboard
 
-## Core components
+class OpenAIAgentRuntime:
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.client = OpenAI(api_key=self.api_key) if self.api_key else None
 
-- openai-agents-python: agent orchestration
-- failproofai: policy enforcement
-- AgentOps-Control-Center: observability and audit logs
-- personal-ai-assistant: user approval UI
-- skills/plugins: reusable capabilities
-- OpenAI runtime: policy-aware planning and action generation
-- FastAPI approval UI: interactive task approval flow
+    def build_default_action(self, user_task: str, requested_kind: Optional[str] = None) -> Action:
+        task = user_task.strip()
+        kind = (requested_kind or "search").lower()
 
-## Safety model
+        if "deploy" in task.lower() or kind == "deploy":
+            return Action(
+                name="deploy_release",
+                kind="deploy",
+                path="/production",
+                command="deploy --prod",
+                description="Deploy a release to production after approval.",
+                rollback_plan="restore previous build and revert config",
+            )
 
-This project is designed for authorized automation only.
+        if "patch" in task.lower() or "edit" in task.lower() or kind == "edit":
+            return Action(
+                name="draft_patch",
+                kind="write_patch",
+                path="./tmp/draft.patch",
+                description="Generate a patch draft in a sandboxed work area.",
+                sandbox_only=True,
+            )
 
-Allowed:
-- read/search tasks
-- local drafts and patch generation
-- sandboxed local edits
-- controlled tests
-- approved deployment or config changes after explicit approval
+        if "test" in task.lower() or kind == "test":
+            return Action(
+                name="run_tests",
+                kind="run_tests",
+                path=".",
+                description="Run a test suite in a controlled environment.",
+                sandbox_only=True,
+            )
 
-Blocked:
-- malicious or unauthorized actions
-- exploitation or credential theft
-- destructive actions without approval
-- privileged operations outside the approved sandbox
+        return Action(
+            name="inspect_repo",
+            kind="search",
+            path=".",
+            description="Inspect the repository and identify task-relevant files.",
+        )
 
-## Quick start
+    def plan_action(self, user_task: str, requested_kind: Optional[str] = None) -> Action:
+        if not self.client:
+            return self.build_default_action(user_task, requested_kind)
 
-1. Create a virtual environment
-2. Install dependencies:
-   pip install -r requirements.txt
-3. Set your OpenAI key if you want runtime planning:
-   export OPENAI_API_KEY="your_key_here"
-4. Run the app:
-   python app.py
-5. Open the browser at http://localhost:8000
+        try:
+            prompt = (
+                "You are a policy-aware agent planner for a safe automation system. "
+                "Return only a JSON object with fields: action_name, action_kind, path, description, sandbox_only, rollback_plan. "
+                "Choose from: search, write_patch, run_tests, deploy. "
+                "Do not add any extra commentary."
+            )
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": prompt},
+                    {"role": "user", "content": user_task},
+                ],
+                temperature=0.2,
+            )
+            raw = response.choices[0].message.content or ""
+            lower = raw.lower()
 
-## Example flow
+            if "deploy" in lower:
+                return Action(
+                    name="deploy_release",
+                    kind="deploy",
+                    path="/production",
+                    command="deploy --prod",
+                    description="Deploy a release to production after approval.",
+                    rollback_plan="restore previous build and revert config",
+                )
 
-1. Agent plans an action
-2. Policy engine checks risk
-3. Low-risk actions run automatically
-4. High-risk actions stop and ask for approval
-5. A sandbox is created for risky execution
-6. Rollback plan is enforced if required
-7. Logs are stored for audit
-8. Approval UI surfaces actions and allows human confirmation
+            if "patch" in lower or "edit" in lower:
+                return Action(
+                    name="draft_patch",
+                    kind="write_patch",
+                    path="./tmp/draft.patch",
+                    description="Generate a patch draft in a sandboxed work area.",
+                    sandbox_only=True,
+                )
 
-## New features in this release
+            if "test" in lower:
+                return Action(
+                    name="run_tests",
+                    kind="run_tests",
+                    path=".",
+                    description="Run local tests in a controlled environment.",
+                    sandbox_only=True,
+                )
 
-- real OpenAI planning support via `openai` SDK
-- built-in FastAPI approval dashboard
-- structured task approval flow
-- environment-based configuration
-- sandbox-aware execution pipeline
-
-## Notes
-
-This project is intentionally strict by default. It fails closed.
+            return self.build_default_action(user_task, requested_kind)
+        except Exception:
+            return self.build_default_action(user_task, requested_kind)
